@@ -1,6 +1,7 @@
 # Directories to ignore
 .vscode/
 __pycache__
+virtualenv
 
 # Files to ignore
 *.pyc
