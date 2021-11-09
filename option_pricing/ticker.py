@@ -4,7 +4,9 @@ import datetime
 # Third party imports
 import requests_cache
 import matplotlib.pyplot as plt
-from pandas_datareader import data as wb
+from pandas_datareader import data as pdr
+import yfinance as yfin
+yfin.pdr_override()
 
 
 class Ticker:
@@ -28,9 +30,9 @@ class Ticker:
             session = requests_cache.CachedSession(cache_name='cache', backend='sqlite', expire_after=expire_after)
             
             if start_date is not None and end_date is not None:
-                data = wb.DataReader(ticker, data_source='yahoo', start=start_date, end=end_date, session=session)
+                data = pdr.get_data_yahoo(ticker, start=start_date, end=end_date, session=session)
             else:
-                data = wb.DataReader(ticker, data_source='yahoo', session=session)   #['Adj Close']
+                data = pdr.get_data_yahoo(ticker, session=session)   #['Adj Close']
             if data is None:
                 return None
             return data
