@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.stats import norm 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Local package imports
 from .base import OptionPricingModel
@@ -81,12 +82,30 @@ class MonteCarloPricing(OptionPricingModel):
 
     def plot_simulation_results(self, num_of_movements):
         """Plots specified number of simulated price movements."""
-        plt.figure(figsize=(12,8))
-        plt.plot(self.simulation_results_S[:,0:num_of_movements])
-        plt.axhline(self.K, c='k', xmin=0, xmax=self.num_of_steps, label='Strike Price')
-        plt.xlim([0, self.num_of_steps])
-        plt.ylabel('Simulated price movements')
-        plt.xlabel('Days in future')
-        plt.title(f'First {num_of_movements}/{self.N} Random Price Movements')
-        plt.legend(loc='best')
+        
+        def normal(mean, std, ax=plt, histmax=False, color="crimson"):
+            """
+            histmax : set it to ax.get_ylim()[1] when stat="probability" in sns.histplot
+            """
+            x = np.linspace(mean-4*std, mean+4*std, 200)
+            p = norm.pdf(x, mean, std)
+            if histmax:
+                p = p*histmax/max(p)
+            z = ax.plot(p, x, color, linewidth=1.5, linestyle='--', label='Theoretical distribution')
+        
+        fig, axs = plt.subplots(1, 2, figsize=(12, 6), gridspec_kw={'width_ratios': [2, 1]})
+        
+        axs[0].plot(self.simulation_results_S[:,0:num_of_movements])
+        axs[0].axhline(self.K, c='k', linestyle='--', xmin=0, xmax=self.num_of_steps, label='Strike Price')
+        axs[0].set_xlim([0, self.simulation_results_S.shape[0]])
+        axs[0].set_ylabel('Simulated price movements')
+        axs[0].set_xlabel('Days in future')
+        axs[0].set_title(f'First {num_of_movements}/{self.simulation_results_S.shape[1]} Random Price Movements')
+        axs[0].legend(loc='best')
+        
+        disp = sns.histplot(y=self.simulation_results_S[-1], stat="density", kde=True, color ='blue', ax=axs[1], label='Obesrved distribution')
+        normal(self.simulation_results_S[-1].mean(), self.simulation_results_S[-1].std(), ax=axs[1])
+        axs[1].legend(prop={'size': 9}, loc="upper left")
+        axs[1].set_title(f"Brownian motion Distribution vs. Normal distribution")
+        plt.tight_layout()
         plt.show()
