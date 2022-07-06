@@ -3,7 +3,7 @@ chardet==3.0.4
 cycler==0.10.0
 idna==2.10
 kiwisolver==1.2.0
-lxml==4.5.2
+lxml==4.9.1
 matplotlib==3.2.2
 numpy==1.19.0
 pandas==1.0.5
