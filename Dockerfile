@@ -10,3 +10,9 @@ RUN pip install --no-cache-dir -U pip && \
 EXPOSE 8080
 
 CMD ["streamlit", "run", "--server.port", "8080", "--server.address", "0.0.0.0", "streamlit_app.py"]
+
+# build command
+# docker build -t options-pricing:latest .
+
+# run command
+# docker run -p 8080:8080 options-pricing:latest
