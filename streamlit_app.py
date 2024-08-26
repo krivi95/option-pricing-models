@@ -1,12 +1,7 @@
-# Standard python imports
+import streamlit as st
 from enum import Enum
 from datetime import datetime, timedelta
-
-# Third party imports
-import streamlit as st
 import yfinance as yf
-
-# Local package imports
 from option_pricing import BlackScholesModel, MonteCarloPricing, BinomialTreeModel, Ticker
 
 class OPTION_PRICING_MODEL(Enum):
@@ -46,27 +41,28 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     if st.button(f'Calculate option price for {ticker}'):
         with st.spinner('Fetching data...'):
             data = get_historical_data(ticker)
+
+    
+    if data is not None and not data.empty:
+        st.write("Data fetched successfully:")
+        st.write(data.tail())
         
-        if data is not None and not data.empty:
-            st.write("Data fetched successfully:")
-            st.write(data.tail())
-            
-            fig = Ticker.plot_data(data, ticker, 'Adj Close')
-            st.pyplot(fig)
+        fig = Ticker.plot_data(data, ticker, 'Close')
+        st.pyplot(fig)
 
-            spot_price = Ticker.get_last_price(data, 'Adj Close')
-            risk_free_rate = risk_free_rate / 100
-            sigma = sigma / 100
-            days_to_maturity = (exercise_date - datetime.now().date()).days
+        spot_price = Ticker.get_last_price(data, 'Close')
+        risk_free_rate = risk_free_rate / 100
+        sigma = sigma / 100
+        days_to_maturity = (exercise_date - datetime.now().date()).days
 
-            BSM = BlackScholesModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma)
-            call_option_price = BSM.calculate_option_price('Call Option')
-            put_option_price = BSM.calculate_option_price('Put Option')
+        BSM = BlackScholesModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma)
+        call_option_price = BSM.calculate_option_price('Call Option')
+        put_option_price = BSM.calculate_option_price('Put Option')
 
-            st.subheader(f'Call option price: {call_option_price:.2f}')
-            st.subheader(f'Put option price: {put_option_price:.2f}')
-        else:
-            st.error("Unable to proceed with calculations due to data fetching error.")
+        st.subheader(f'Call option price: {call_option_price:.2f}')
+        st.subheader(f'Put option price: {put_option_price:.2f}')
+    else:
+        st.error("Unable to proceed with calculations due to data fetching error.")
 
 elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
     # Parameters for Monte Carlo simulation
@@ -86,10 +82,10 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
             st.write("Data fetched successfully:")
             st.write(data.tail())
             
-            fig = Ticker.plot_data(data, ticker, 'Adj Close')
+            fig = Ticker.plot_data(data, ticker, 'Close')
             st.pyplot(fig)
 
-            spot_price = Ticker.get_last_price(data, 'Adj Close')
+            spot_price = Ticker.get_last_price(data, 'Close')
             risk_free_rate = risk_free_rate / 100
             sigma = sigma / 100
             days_to_maturity = (exercise_date - datetime.now().date()).days
@@ -125,10 +121,10 @@ elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
             st.write("Data fetched successfully:")
             st.write(data.tail())
             
-            fig = Ticker.plot_data(data, ticker, 'Adj Close')
+            fig = Ticker.plot_data(data, ticker, 'Close')
             st.pyplot(fig)
 
-            spot_price = Ticker.get_last_price(data, 'Adj Close')
+            spot_price = Ticker.get_last_price(data, 'Close')
             risk_free_rate = risk_free_rate / 100
             sigma = sigma / 100
             days_to_maturity = (exercise_date - datetime.now().date()).days
