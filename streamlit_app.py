@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 # Third party imports
 import streamlit as st
+import yfinance as yf
 
 # Local package imports
 from option_pricing import BlackScholesModel, MonteCarloPricing, BinomialTreeModel, Ticker
@@ -16,7 +17,11 @@ class OPTION_PRICING_MODEL(Enum):
 @st.cache_data
 def get_historical_data(ticker):
     """Getting historical data for specified ticker and caching it with streamlit app."""
-    return Ticker.get_historical_data(ticker)
+    data = Ticker.get_historical_data(ticker)
+    if data is None or data.empty:
+        st.error(f"Unable to fetch data for ticker {ticker}. Please check the ticker symbol and try again.")
+        return None
+    return data
 
 # Ignore the Streamlit warning for using st.pyplot()
 st.set_option('deprecation.showPyplotGlobalUse', False)
@@ -41,6 +46,8 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     if st.button(f'Calculate option price for {ticker}'):
         # Getting data for selected ticker
         data = get_historical_data(ticker)
+        st.write(f"Debug: Data for {ticker}")
+        st.write(data)
         if data is not None:
             st.write(data.tail())
             Ticker.plot_data(data, ticker, 'Adj Close')
@@ -76,6 +83,8 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
     if st.button(f'Calculate option price for {ticker}'):
         # Getting data for selected ticker
         data = get_historical_data(ticker)
+        st.write(f"Debug: Data for {ticker}")
+        st.write(data)
         if data is not None:
             st.write(data.tail())
             Ticker.plot_data(data, ticker, 'Adj Close')
@@ -117,6 +126,8 @@ elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
     if st.button(f'Calculate option price for {ticker}'):
         # Getting data for selected ticker
         data = get_historical_data(ticker)
+        st.write(f"Debug: Data for {ticker}")
+        st.write(data)
         if data is not None:
             st.write(data.tail())
             Ticker.plot_data(data, ticker, 'Adj Close')

@@ -2,44 +2,35 @@
 import datetime
 
 # Third party imports
-import requests_cache
+import yfinance as yf
 import matplotlib.pyplot as plt
-from pandas_datareader import data as wb
 
-
-class Ticker:
-    """Class for fetcing data from yahoo finance."""
+@staticmethod
+def get_historical_data(ticker, start_date=None, end_date=None):
+    """
+    Fetches stock data from yahoo finance using yfinance library.
     
-    @staticmethod
-    def get_historical_data(ticker, start_date=None, end_date=None, cache_data=True, cache_days=1):
-        """
-        Fetches stock data from yahoo finance. Request is by default cashed in sqlite db for 1 day.
+    Params:
+    ticker: ticker symbol
+    start_date: start date for getting historical data
+    end_date: end date for getting historical data
+    """
+    try:
+        if start_date is None:
+            start_date = datetime.datetime.now() - datetime.timedelta(days=365)
+        if end_date is None:
+            end_date = datetime.datetime.now()
         
-        Params:
-        ticker: ticker symbol
-        start_date: start date for getting historical data
-        end_date: end date for getting historical data
-        cache_date: flag for caching fetched data into slqite db
-        cache_days: number of days data will stay in cache 
-        """
-        try:
-            # initializing sqlite for caching yahoo finance requests
-            expire_after = datetime.timedelta(days=1)
-            session = requests_cache.CachedSession(cache_name='cache', backend='sqlite', expire_after=expire_after)
-
-            # Adding headers to session
-            session.headers = {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0', 'Accept': 'application/json;charset=utf-8'}  # noqa
-            
-            if start_date is not None and end_date is not None:
-                data = wb.DataReader(ticker, data_source='yahoo', start=start_date, end=end_date, session=session)
-            else:
-                data = wb.DataReader(ticker, data_source='yahoo', session=session)   #['Adj Close']
-            if data is None:
-                return None
-            return data
-        except Exception as e:
-            print(e)
+        stock = yf.Ticker(ticker)
+        data = stock.history(start=start_date, end=end_date)
+        
+        if data.empty:
+            print(f"No data returned for ticker {ticker}")
             return None
+        return data
+    except Exception as e:
+        print(f"Error fetching data for ticker {ticker}: {str(e)}")
+        return None
 
     @staticmethod
     def get_columns(data):

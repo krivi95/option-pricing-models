@@ -17,3 +17,4 @@ scipy==1.11.4
 six==1.16.0
 streamlit==1.29.0
 urllib3==2.1.0
+yfinance==0.2.10
