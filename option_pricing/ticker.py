@@ -4,6 +4,7 @@ import datetime
 # Third party imports
 import yfinance as yf
 import matplotlib.pyplot as plt
+import pandas as pd
 
 class Ticker:
     @staticmethod
@@ -26,14 +27,10 @@ class Ticker:
             data = stock.history(start=start_date, end=end_date)
             
             if data.empty:
-                print(f"No data returned for ticker {ticker}")
-                return None
+                raise ValueError(f"No data returned for ticker {ticker}")
             return data
         except Exception as e:
-            print(f"Error fetching data for ticker {ticker}: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
+            raise Exception(f"Error fetching data for ticker {ticker}: {str(e)}")
 
     @staticmethod
     def get_columns(data):
@@ -43,9 +40,9 @@ class Ticker:
         Params:
         data: dataframe representing fetched data
         """
-        if data is None:
-            return None
-        return [column for column in data.columns]
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Input must be a pandas DataFrame")
+        return list(data.columns)
 
     @staticmethod
     def get_last_price(data, column_name):
@@ -56,11 +53,11 @@ class Ticker:
         data: dataframe representing fetched data
         column_name: name of the column in dataframe
         """
-        if data is None or column_name is None:
-            return None
-        if column_name not in Ticker.get_columns(data):
-            return None
-        return data[column_name].iloc[len(data) - 1]
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Input must be a pandas DataFrame")
+        if column_name not in data.columns:
+            raise ValueError(f"Column '{column_name}' not found in the DataFrame")
+        return data[column_name].iloc[-1]
 
     @staticmethod
     def plot_data(data, ticker, column_name):
@@ -71,15 +68,15 @@ class Ticker:
         data: dataframe representing fetched data
         column_name: name of the column in dataframe
         """
-        try:
-            if data is None:
-                return
-            data[column_name].plot()
-            plt.ylabel(f'{column_name}')
-            plt.xlabel('Date')
-            plt.title(f'Historical data for {ticker} - {column_name}')
-            plt.legend(loc='best')
-            plt.show()
-        except Exception as e:
-            print(e)
-            return
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError("Input must be a pandas DataFrame")
+        if column_name not in data.columns:
+            raise ValueError(f"Column '{column_name}' not found in the DataFrame")
+        
+        plt.figure(figsize=(10, 6))
+        data[column_name].plot()
+        plt.ylabel(column_name)
+        plt.xlabel('Date')
+        plt.title(f'Historical data for {ticker} - {column_name}')
+        plt.legend(loc='best')
+        return plt
