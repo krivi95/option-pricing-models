@@ -5,32 +5,35 @@ import datetime
 import yfinance as yf
 import matplotlib.pyplot as plt
 
-@staticmethod
-def get_historical_data(ticker, start_date=None, end_date=None):
-    """
-    Fetches stock data from yahoo finance using yfinance library.
-    
-    Params:
-    ticker: ticker symbol
-    start_date: start date for getting historical data
-    end_date: end date for getting historical data
-    """
-    try:
-        if start_date is None:
-            start_date = datetime.datetime.now() - datetime.timedelta(days=365)
-        if end_date is None:
-            end_date = datetime.datetime.now()
+class Ticker:
+    @staticmethod
+    def get_historical_data(ticker, start_date=None, end_date=None):
+        """
+        Fetches stock data from yahoo finance using yfinance library.
         
-        stock = yf.Ticker(ticker)
-        data = stock.history(start=start_date, end=end_date)
-        
-        if data.empty:
-            print(f"No data returned for ticker {ticker}")
+        Params:
+        ticker: ticker symbol
+        start_date: start date for getting historical data
+        end_date: end date for getting historical data
+        """
+        try:
+            if start_date is None:
+                start_date = datetime.datetime.now() - datetime.timedelta(days=365)
+            if end_date is None:
+                end_date = datetime.datetime.now()
+            
+            stock = yf.Ticker(ticker)
+            data = stock.history(start=start_date, end=end_date)
+            
+            if data.empty:
+                print(f"No data returned for ticker {ticker}")
+                return None
+            return data
+        except Exception as e:
+            print(f"Error fetching data for ticker {ticker}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
-        return data
-    except Exception as e:
-        print(f"Error fetching data for ticker {ticker}: {str(e)}")
-        return None
 
     @staticmethod
     def get_columns(data):
@@ -58,7 +61,6 @@ def get_historical_data(ticker, start_date=None, end_date=None):
         if column_name not in Ticker.get_columns(data):
             return None
         return data[column_name].iloc[len(data) - 1]
-
 
     @staticmethod
     def plot_data(data, ticker, column_name):

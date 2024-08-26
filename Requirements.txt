@@ -1,3 +1,4 @@
+streamlit==1.29.0
 certifi==2023.11.17
 chardet==5.2.0
 cycler==0.12.1
@@ -15,6 +16,5 @@ requests==2.31.0
 requests-cache==1.1.1
 scipy==1.11.4
 six==1.16.0
-streamlit==1.29.0
 urllib3==2.1.0
 yfinance==0.2.10
