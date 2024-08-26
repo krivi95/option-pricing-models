@@ -1,6 +1,7 @@
 import collections
 import logging
-from typing import Iterator, List, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Generator, List, Optional, Sequence, Tuple
 
 from pip._internal.utils.logging import indent_log
 
@@ -9,44 +10,38 @@ from .req_install import InstallRequirement
 from .req_set import RequirementSet
 
 __all__ = [
-    "RequirementSet", "InstallRequirement",
-    "parse_requirements", "install_given_reqs",
+    "RequirementSet",
+    "InstallRequirement",
+    "parse_requirements",
+    "install_given_reqs",
 ]
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
 class InstallationResult:
-    def __init__(self, name):
-        # type: (str) -> None
-        self.name = name
-
-    def __repr__(self):
-        # type: () -> str
-        return f"InstallationResult(name={self.name!r})"
+    name: str
 
 
 def _validate_requirements(
-    requirements,  # type: List[InstallRequirement]
-):
-    # type: (...) -> Iterator[Tuple[str, InstallRequirement]]
+    requirements: List[InstallRequirement],
+) -> Generator[Tuple[str, InstallRequirement], None, None]:
     for req in requirements:
         assert req.name, f"invalid to-be-installed requirement: {req}"
         yield req.name, req
 
 
 def install_given_reqs(
-    requirements,  # type: List[InstallRequirement]
-    install_options,  # type: List[str]
-    global_options,  # type: Sequence[str]
-    root,  # type: Optional[str]
-    home,  # type: Optional[str]
-    prefix,  # type: Optional[str]
-    warn_script_location,  # type: bool
-    use_user_site,  # type: bool
-    pycompile,  # type: bool
-):
-    # type: (...) -> List[InstallationResult]
+    requirements: List[InstallRequirement],
+    global_options: Sequence[str],
+    root: Optional[str],
+    home: Optional[str],
+    prefix: Optional[str],
+    warn_script_location: bool,
+    use_user_site: bool,
+    pycompile: bool,
+) -> List[InstallationResult]:
     """
     Install everything in the given list.
 
@@ -56,8 +51,8 @@ def install_given_reqs(
 
     if to_install:
         logger.info(
-            'Installing collected packages: %s',
-            ', '.join(to_install.keys()),
+            "Installing collected packages: %s",
+            ", ".join(to_install.keys()),
         )
 
     installed = []
@@ -65,17 +60,14 @@ def install_given_reqs(
     with indent_log():
         for req_name, requirement in to_install.items():
             if requirement.should_reinstall:
-                logger.info('Attempting uninstall: %s', req_name)
+                logger.info("Attempting uninstall: %s", req_name)
                 with indent_log():
-                    uninstalled_pathset = requirement.uninstall(
-                        auto_confirm=True
-                    )
+                    uninstalled_pathset = requirement.uninstall(auto_confirm=True)
             else:
                 uninstalled_pathset = None
 
             try:
                 requirement.install(
-                    install_options,
                     global_options,
                     root=root,
                     home=home,

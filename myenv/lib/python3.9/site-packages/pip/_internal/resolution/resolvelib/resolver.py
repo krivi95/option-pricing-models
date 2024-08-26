@@ -1,22 +1,19 @@
+import contextlib
 import functools
 import logging
 import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, cast
 
 from pip._vendor.packaging.utils import canonicalize_name
-from pip._vendor.packaging.version import parse as parse_version
 from pip._vendor.resolvelib import BaseReporter, ResolutionImpossible
 from pip._vendor.resolvelib import Resolver as RLResolver
 from pip._vendor.resolvelib.structs import DirectedGraph
 
 from pip._internal.cache import WheelCache
-from pip._internal.exceptions import InstallationError
 from pip._internal.index.package_finder import PackageFinder
 from pip._internal.operations.prepare import RequirementPreparer
-from pip._internal.req.req_install import (
-    InstallRequirement,
-    check_invalid_constraint_type,
-)
+from pip._internal.req.constructors import install_req_extend_extras
+from pip._internal.req.req_install import InstallRequirement
 from pip._internal.req.req_set import RequirementSet
 from pip._internal.resolution.base import BaseResolver, InstallRequirementProvider
 from pip._internal.resolution.resolvelib.provider import PipProvider
@@ -24,11 +21,9 @@ from pip._internal.resolution.resolvelib.reporter import (
     PipDebuggingReporter,
     PipReporter,
 )
-from pip._internal.utils.deprecation import deprecated
-from pip._internal.utils.filetypes import is_archive_file
-from pip._internal.utils.misc import dist_is_editable
+from pip._internal.utils.packaging import get_requirement
 
-from .base import Candidate, Constraint, Requirement
+from .base import Candidate, Requirement
 from .factory import Factory
 
 if TYPE_CHECKING:
@@ -45,17 +40,17 @@ class Resolver(BaseResolver):
 
     def __init__(
         self,
-        preparer,  # type: RequirementPreparer
-        finder,  # type: PackageFinder
-        wheel_cache,  # type: Optional[WheelCache]
-        make_install_req,  # type: InstallRequirementProvider
-        use_user_site,  # type: bool
-        ignore_dependencies,  # type: bool
-        ignore_installed,  # type: bool
-        ignore_requires_python,  # type: bool
-        force_reinstall,  # type: bool
-        upgrade_strategy,  # type: str
-        py_version_info=None,  # type: Optional[Tuple[int, ...]]
+        preparer: RequirementPreparer,
+        finder: PackageFinder,
+        wheel_cache: Optional[WheelCache],
+        make_install_req: InstallRequirementProvider,
+        use_user_site: bool,
+        ignore_dependencies: bool,
+        ignore_installed: bool,
+        ignore_requires_python: bool,
+        force_reinstall: bool,
+        upgrade_strategy: str,
+        py_version_info: Optional[Tuple[int, ...]] = None,
     ):
         super().__init__()
         assert upgrade_strategy in self._allowed_strategies
@@ -73,72 +68,60 @@ class Resolver(BaseResolver):
         )
         self.ignore_dependencies = ignore_dependencies
         self.upgrade_strategy = upgrade_strategy
-        self._result = None  # type: Optional[Result]
+        self._result: Optional[Result] = None
 
-    def resolve(self, root_reqs, check_supported_wheels):
-        # type: (List[InstallRequirement], bool) -> RequirementSet
-
-        constraints = {}  # type: Dict[str, Constraint]
-        user_requested = {}  # type: Dict[str, int]
-        requirements = []
-        for i, req in enumerate(root_reqs):
-            if req.constraint:
-                # Ensure we only accept valid constraints
-                problem = check_invalid_constraint_type(req)
-                if problem:
-                    raise InstallationError(problem)
-                if not req.match_markers():
-                    continue
-                assert req.name, "Constraint must be named"
-                name = canonicalize_name(req.name)
-                if name in constraints:
-                    constraints[name] &= req
-                else:
-                    constraints[name] = Constraint.from_ireq(req)
-            else:
-                if req.user_supplied and req.name:
-                    canonical_name = canonicalize_name(req.name)
-                    if canonical_name not in user_requested:
-                        user_requested[canonical_name] = i
-                r = self.factory.make_requirement_from_install_req(
-                    req, requested_extras=()
-                )
-                if r is not None:
-                    requirements.append(r)
-
+    def resolve(
+        self, root_reqs: List[InstallRequirement], check_supported_wheels: bool
+    ) -> RequirementSet:
+        collected = self.factory.collect_root_requirements(root_reqs)
         provider = PipProvider(
             factory=self.factory,
-            constraints=constraints,
+            constraints=collected.constraints,
             ignore_dependencies=self.ignore_dependencies,
             upgrade_strategy=self.upgrade_strategy,
-            user_requested=user_requested,
+            user_requested=collected.user_requested,
         )
         if "PIP_RESOLVER_DEBUG" in os.environ:
-            reporter = PipDebuggingReporter()  # type: BaseReporter
+            reporter: BaseReporter = PipDebuggingReporter()
         else:
             reporter = PipReporter()
-        resolver = RLResolver(
+        resolver: RLResolver[Requirement, Candidate, str] = RLResolver(
             provider,
             reporter,
-        )  # type: RLResolver[Requirement, Candidate, str]
+        )
 
         try:
-            try_to_avoid_resolution_too_deep = 2000000
+            limit_how_complex_resolution_can_be = 200000
             result = self._result = resolver.resolve(
-                requirements, max_rounds=try_to_avoid_resolution_too_deep
+                collected.requirements, max_rounds=limit_how_complex_resolution_can_be
             )
 
         except ResolutionImpossible as e:
             error = self.factory.get_installation_error(
                 cast("ResolutionImpossible[Requirement, Candidate]", e),
-                constraints,
+                collected.constraints,
             )
             raise error from e
 
         req_set = RequirementSet(check_supported_wheels=check_supported_wheels)
-        for candidate in result.mapping.values():
+        # process candidates with extras last to ensure their base equivalent is
+        # already in the req_set if appropriate.
+        # Python's sort is stable so using a binary key function keeps relative order
+        # within both subsets.
+        for candidate in sorted(
+            result.mapping.values(), key=lambda c: c.name != c.project_name
+        ):
             ireq = candidate.get_install_requirement()
             if ireq is None:
+                if candidate.name != candidate.project_name:
+                    # extend existing req's extras
+                    with contextlib.suppress(KeyError):
+                        req = req_set.get_requirement(candidate.project_name)
+                        req_set.add_named_requirement(
+                            install_req_extend_extras(
+                                req, get_requirement(candidate.name).extras
+                            )
+                        )
                 continue
 
             # Check if there is already an installation under the same name,
@@ -150,10 +133,10 @@ class Resolver(BaseResolver):
             elif self.factory.force_reinstall:
                 # The --force-reinstall flag is set -- reinstall.
                 ireq.should_reinstall = True
-            elif parse_version(installed_dist.version) != candidate.version:
+            elif installed_dist.version != candidate.version:
                 # The installation is different in version -- reinstall.
                 ireq.should_reinstall = True
-            elif candidate.is_editable or dist_is_editable(installed_dist):
+            elif candidate.is_editable or installed_dist.editable:
                 # The incoming distribution is editable, or different in
                 # editable-ness to installation -- reinstall.
                 ireq.should_reinstall = True
@@ -168,25 +151,6 @@ class Resolver(BaseResolver):
                         ireq.name,
                     )
                     continue
-
-                looks_like_sdist = (
-                    is_archive_file(candidate.source_link.file_path)
-                    and candidate.source_link.ext != ".zip"
-                )
-                if looks_like_sdist:
-                    # is a local sdist -- show a deprecation warning!
-                    reason = (
-                        "Source distribution is being reinstalled despite an "
-                        "installed package having the same name and version as "
-                        "the installed package."
-                    )
-                    replacement = "use --force-reinstall"
-                    deprecated(
-                        reason=reason,
-                        replacement=replacement,
-                        gone_in="21.2",
-                        issue=8711,
-                    )
 
                 # is a local sdist or path -- reinstall
                 ireq.should_reinstall = True
@@ -213,10 +177,14 @@ class Resolver(BaseResolver):
 
         reqs = req_set.all_requirements
         self.factory.preparer.prepare_linked_requirements_more(reqs)
+        for req in reqs:
+            req.prepared = True
+            req.needs_more_preparation = False
         return req_set
 
-    def get_installation_order(self, req_set):
-        # type: (RequirementSet) -> List[InstallRequirement]
+    def get_installation_order(
+        self, req_set: RequirementSet
+    ) -> List[InstallRequirement]:
         """Get order for installation of requirements in RequirementSet.
 
         The returned list contains a requirement before another that depends on
@@ -224,17 +192,19 @@ class Resolver(BaseResolver):
         get installed one-by-one.
 
         The current implementation creates a topological ordering of the
-        dependency graph, while breaking any cycles in the graph at arbitrary
-        points. We make no guarantees about where the cycle would be broken,
-        other than they would be broken.
+        dependency graph, giving more weight to packages with less
+        or no dependencies, while breaking any cycles in the graph at
+        arbitrary points. We make no guarantees about where the cycle
+        would be broken, other than it *would* be broken.
         """
         assert self._result is not None, "must call resolve() first"
 
+        if not req_set.requirements:
+            # Nothing is left to install, so we do not need an order.
+            return []
+
         graph = self._result.graph
-        weights = get_topological_weights(
-            graph,
-            expected_node_count=len(self._result.mapping) + 1,
-        )
+        weights = get_topological_weights(graph, set(req_set.requirements.keys()))
 
         sorted_items = sorted(
             req_set.requirements.items(),
@@ -244,29 +214,38 @@ class Resolver(BaseResolver):
         return [ireq for _, ireq in sorted_items]
 
 
-def get_topological_weights(graph, expected_node_count):
-    # type: (DirectedGraph[Optional[str]], int) -> Dict[Optional[str], int]
+def get_topological_weights(
+    graph: "DirectedGraph[Optional[str]]", requirement_keys: Set[str]
+) -> Dict[Optional[str], int]:
     """Assign weights to each node based on how "deep" they are.
 
     This implementation may change at any point in the future without prior
     notice.
 
-    We take the length for the longest path to any node from root, ignoring any
-    paths that contain a single node twice (i.e. cycles). This is done through
-    a depth-first search through the graph, while keeping track of the path to
-    the node.
+    We first simplify the dependency graph by pruning any leaves and giving them
+    the highest weight: a package without any dependencies should be installed
+    first. This is done again and again in the same way, giving ever less weight
+    to the newly found leaves. The loop stops when no leaves are left: all
+    remaining packages have at least one dependency left in the graph.
+
+    Then we continue with the remaining graph, by taking the length for the
+    longest path to any node from root, ignoring any paths that contain a single
+    node twice (i.e. cycles). This is done through a depth-first search through
+    the graph, while keeping track of the path to the node.
 
     Cycles in the graph result would result in node being revisited while also
-    being it's own path. In this case, take no action. This helps ensure we
+    being on its own path. In this case, take no action. This helps ensure we
     don't get stuck in a cycle.
 
     When assigning weight, the longer path (i.e. larger length) is preferred.
-    """
-    path = set()  # type: Set[Optional[str]]
-    weights = {}  # type: Dict[Optional[str], int]
 
-    def visit(node):
-        # type: (Optional[str]) -> None
+    We are only interested in the weights of packages that are in the
+    requirement_keys.
+    """
+    path: Set[Optional[str]] = set()
+    weights: Dict[Optional[str], int] = {}
+
+    def visit(node: Optional[str]) -> None:
         if node in path:
             # We hit a cycle, so we'll break it here.
             return
@@ -277,24 +256,57 @@ def get_topological_weights(graph, expected_node_count):
             visit(child)
         path.remove(node)
 
+        if node not in requirement_keys:
+            return
+
         last_known_parent_count = weights.get(node, 0)
         weights[node] = max(last_known_parent_count, len(path))
 
+    # Simplify the graph, pruning leaves that have no dependencies.
+    # This is needed for large graphs (say over 200 packages) because the
+    # `visit` function is exponentially slower then, taking minutes.
+    # See https://github.com/pypa/pip/issues/10557
+    # We will loop until we explicitly break the loop.
+    while True:
+        leaves = set()
+        for key in graph:
+            if key is None:
+                continue
+            for _child in graph.iter_children(key):
+                # This means we have at least one child
+                break
+            else:
+                # No child.
+                leaves.add(key)
+        if not leaves:
+            # We are done simplifying.
+            break
+        # Calculate the weight for the leaves.
+        weight = len(graph) - 1
+        for leaf in leaves:
+            if leaf not in requirement_keys:
+                continue
+            weights[leaf] = weight
+        # Remove the leaves from the graph, making it simpler.
+        for leaf in leaves:
+            graph.remove(leaf)
+
+    # Visit the remaining graph.
     # `None` is guaranteed to be the root node by resolvelib.
     visit(None)
 
-    # Sanity checks
-    assert weights[None] == 0
-    assert len(weights) == expected_node_count
+    # Sanity check: all requirement keys should be in the weights,
+    # and no other keys should be in the weights.
+    difference = set(weights.keys()).difference(requirement_keys)
+    assert not difference, difference
 
     return weights
 
 
 def _req_set_item_sorter(
-    item,  # type: Tuple[str, InstallRequirement]
-    weights,  # type: Dict[Optional[str], int]
-):
-    # type: (...) -> Tuple[int, str]
+    item: Tuple[str, InstallRequirement],
+    weights: Dict[Optional[str], int],
+) -> Tuple[int, str]:
     """Key function used to sort install requirements for installation.
 
     Based on the "weight" mapping calculated in ``get_installation_order()``.

@@ -75,6 +75,18 @@ class IteratorMapping(collections_abc.Mapping):
         self._accessor = accessor
         self._appends = appends or {}
 
+    def __repr__(self):
+        return "IteratorMapping({!r}, {!r}, {!r})".format(
+            self._mapping,
+            self._accessor,
+            self._appends,
+        )
+
+    def __bool__(self):
+        return bool(self._mapping or self._appends)
+
+    __nonzero__ = __bool__  # XXX: Python 2.
+
     def __contains__(self, key):
         return key in self._mapping or key in self._appends
 
@@ -90,7 +102,7 @@ class IteratorMapping(collections_abc.Mapping):
         return itertools.chain(self._mapping, more)
 
     def __len__(self):
-        more = len(k for k in self._appends if k not in self._mapping)
+        more = sum(1 for k in self._appends if k not in self._mapping)
         return len(self._mapping) + more
 
 
@@ -105,13 +117,14 @@ class _FactoryIterableView(object):
 
     def __init__(self, factory):
         self._factory = factory
+        self._iterable = None
 
     def __repr__(self):
-        return "{}({})".format(type(self).__name__, list(self._factory()))
+        return "{}({})".format(type(self).__name__, list(self))
 
     def __bool__(self):
         try:
-            next(self._factory())
+            next(iter(self))
         except StopIteration:
             return False
         return True
@@ -119,7 +132,11 @@ class _FactoryIterableView(object):
     __nonzero__ = __bool__  # XXX: Python 2.
 
     def __iter__(self):
-        return self._factory()
+        iterable = (
+            self._factory() if self._iterable is None else self._iterable
+        )
+        self._iterable, current = itertools.tee(iterable)
+        return current
 
 
 class _SequenceIterableView(object):

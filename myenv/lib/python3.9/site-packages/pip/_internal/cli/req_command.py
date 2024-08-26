@@ -1,27 +1,26 @@
-"""Contains the Command base classes that depend on PipSession.
+"""Contains the RequirementCommand base class.
 
-The classes in this module are in a separate module so the commands not
-needing download / PackageFinder capability don't unnecessarily import the
+This class is in a separate module so the commands that do not always
+need PackageFinder capability don't unnecessarily import the
 PackageFinder machinery and all its vendored dependencies, etc.
 """
 
 import logging
-import os
-import sys
 from functools import partial
 from optparse import Values
 from typing import Any, List, Optional, Tuple
 
 from pip._internal.cache import WheelCache
 from pip._internal.cli import cmdoptions
-from pip._internal.cli.base_command import Command
-from pip._internal.cli.command_context import CommandContextMixIn
+from pip._internal.cli.index_command import IndexGroupCommand
+from pip._internal.cli.index_command import SessionCommandMixin as SessionCommandMixin
 from pip._internal.exceptions import CommandError, PreviousBuildDirError
 from pip._internal.index.collector import LinkCollector
 from pip._internal.index.package_finder import PackageFinder
 from pip._internal.models.selection_prefs import SelectionPreferences
 from pip._internal.models.target_python import TargetPython
 from pip._internal.network.session import PipSession
+from pip._internal.operations.build.build_tracker import BuildTracker
 from pip._internal.operations.prepare import RequirementPreparer
 from pip._internal.req.constructors import (
     install_req_from_editable,
@@ -31,120 +30,14 @@ from pip._internal.req.constructors import (
 )
 from pip._internal.req.req_file import parse_requirements
 from pip._internal.req.req_install import InstallRequirement
-from pip._internal.req.req_tracker import RequirementTracker
 from pip._internal.resolution.base import BaseResolver
-from pip._internal.self_outdated_check import pip_self_version_check
 from pip._internal.utils.temp_dir import (
     TempDirectory,
     TempDirectoryTypeRegistry,
     tempdir_kinds,
 )
-from pip._internal.utils.virtualenv import running_under_virtualenv
 
 logger = logging.getLogger(__name__)
-
-
-class SessionCommandMixin(CommandContextMixIn):
-
-    """
-    A class mixin for command classes needing _build_session().
-    """
-
-    def __init__(self):
-        # type: () -> None
-        super().__init__()
-        self._session = None  # Optional[PipSession]
-
-    @classmethod
-    def _get_index_urls(cls, options):
-        # type: (Values) -> Optional[List[str]]
-        """Return a list of index urls from user-provided options."""
-        index_urls = []
-        if not getattr(options, "no_index", False):
-            url = getattr(options, "index_url", None)
-            if url:
-                index_urls.append(url)
-        urls = getattr(options, "extra_index_urls", None)
-        if urls:
-            index_urls.extend(urls)
-        # Return None rather than an empty list
-        return index_urls or None
-
-    def get_default_session(self, options):
-        # type: (Values) -> PipSession
-        """Get a default-managed session."""
-        if self._session is None:
-            self._session = self.enter_context(self._build_session(options))
-            # there's no type annotation on requests.Session, so it's
-            # automatically ContextManager[Any] and self._session becomes Any,
-            # then https://github.com/python/mypy/issues/7696 kicks in
-            assert self._session is not None
-        return self._session
-
-    def _build_session(self, options, retries=None, timeout=None):
-        # type: (Values, Optional[int], Optional[int]) -> PipSession
-        assert not options.cache_dir or os.path.isabs(options.cache_dir)
-        session = PipSession(
-            cache=(
-                os.path.join(options.cache_dir, "http") if options.cache_dir else None
-            ),
-            retries=retries if retries is not None else options.retries,
-            trusted_hosts=options.trusted_hosts,
-            index_urls=self._get_index_urls(options),
-        )
-
-        # Handle custom ca-bundles from the user
-        if options.cert:
-            session.verify = options.cert
-
-        # Handle SSL client certificate
-        if options.client_cert:
-            session.cert = options.client_cert
-
-        # Handle timeouts
-        if options.timeout or timeout:
-            session.timeout = timeout if timeout is not None else options.timeout
-
-        # Handle configured proxies
-        if options.proxy:
-            session.proxies = {
-                "http": options.proxy,
-                "https": options.proxy,
-            }
-
-        # Determine if we can prompt the user for authentication or not
-        session.auth.prompting = not options.no_input
-
-        return session
-
-
-class IndexGroupCommand(Command, SessionCommandMixin):
-
-    """
-    Abstract base class for commands with the index_group options.
-
-    This also corresponds to the commands that permit the pip version check.
-    """
-
-    def handle_pip_version_check(self, options):
-        # type: (Values) -> None
-        """
-        Do the pip version check if not disabled.
-
-        This overrides the default behavior of not doing the check.
-        """
-        # Make sure the index_group options are present.
-        assert hasattr(options, "no_index")
-
-        if options.disable_pip_version_check or options.no_index:
-            return
-
-        # Otherwise, check if we're using the latest version of pip available.
-        session = self._build_session(
-            options, retries=0, timeout=min(5, options.timeout)
-        )
-        with session:
-            pip_self_version_check(session, options)
 
 
 KEEPABLE_TEMPDIR_TYPES = [
@@ -154,49 +47,18 @@ KEEPABLE_TEMPDIR_TYPES = [
 ]
 
 
-def warn_if_run_as_root():
-    # type: () -> None
-    """Output a warning for sudo users on Unix.
-
-    In a virtual environment, sudo pip still writes to virtualenv.
-    On Windows, users may run pip as Administrator without issues.
-    This warning only applies to Unix root users outside of virtualenv.
-    """
-    if running_under_virtualenv():
-        return
-    if not hasattr(os, "getuid"):
-        return
-    # On Windows, there are no "system managed" Python packages. Installing as
-    # Administrator via pip is the correct way of updating system environments.
-    #
-    # We choose sys.platform over utils.compat.WINDOWS here to enable Mypy platform
-    # checks: https://mypy.readthedocs.io/en/stable/common_issues.html
-    if sys.platform == "win32" or sys.platform == "cygwin":
-        return
-    if sys.platform == "darwin" or sys.platform == "linux":
-        if os.getuid() != 0:
-            return
-    logger.warning(
-        "Running pip as the 'root' user can result in broken permissions and "
-        "conflicting behaviour with the system package manager. "
-        "It is recommended to use a virtual environment instead: "
-        "https://pip.pypa.io/warnings/venv"
-    )
-
-
-def with_cleanup(func):
-    # type: (Any) -> Any
+def with_cleanup(func: Any) -> Any:
     """Decorator for common logic related to managing temporary
     directories.
     """
 
-    def configure_tempdir_registry(registry):
-        # type: (TempDirectoryTypeRegistry) -> None
+    def configure_tempdir_registry(registry: TempDirectoryTypeRegistry) -> None:
         for t in KEEPABLE_TEMPDIR_TYPES:
             registry.set_delete(t, False)
 
-    def wrapper(self, options, args):
-        # type: (RequirementCommand, Values, List[Any]) -> Optional[int]
+    def wrapper(
+        self: RequirementCommand, options: Values, args: List[Any]
+    ) -> Optional[int]:
         assert self.tempdir_registry is not None
         if options.no_clean:
             configure_tempdir_registry(self.tempdir_registry)
@@ -214,41 +76,40 @@ def with_cleanup(func):
 
 
 class RequirementCommand(IndexGroupCommand):
-    def __init__(self, *args, **kw):
-        # type: (Any, Any) -> None
+    def __init__(self, *args: Any, **kw: Any) -> None:
         super().__init__(*args, **kw)
 
         self.cmd_opts.add_option(cmdoptions.no_clean())
 
     @staticmethod
-    def determine_resolver_variant(options):
-        # type: (Values) -> str
+    def determine_resolver_variant(options: Values) -> str:
         """Determines which resolver should be used, based on the given options."""
         if "legacy-resolver" in options.deprecated_features_enabled:
             return "legacy"
 
-        return "2020-resolver"
+        return "resolvelib"
 
     @classmethod
     def make_requirement_preparer(
         cls,
-        temp_build_dir,  # type: TempDirectory
-        options,  # type: Values
-        req_tracker,  # type: RequirementTracker
-        session,  # type: PipSession
-        finder,  # type: PackageFinder
-        use_user_site,  # type: bool
-        download_dir=None,  # type: str
-    ):
-        # type: (...) -> RequirementPreparer
+        temp_build_dir: TempDirectory,
+        options: Values,
+        build_tracker: BuildTracker,
+        session: PipSession,
+        finder: PackageFinder,
+        use_user_site: bool,
+        download_dir: Optional[str] = None,
+        verbosity: int = 0,
+    ) -> RequirementPreparer:
         """
         Create a RequirementPreparer instance for the given parameters.
         """
         temp_build_dir_path = temp_build_dir.path
         assert temp_build_dir_path is not None
+        legacy_resolver = False
 
         resolver_variant = cls.determine_resolver_variant(options)
-        if resolver_variant == "2020-resolver":
+        if resolver_variant == "resolvelib":
             lazy_wheel = "fast-deps" in options.features_enabled
             if lazy_wheel:
                 logger.warning(
@@ -259,6 +120,7 @@ class RequirementCommand(IndexGroupCommand):
                     "production."
                 )
         else:
+            legacy_resolver = True
             lazy_wheel = False
             if "fast-deps" in options.features_enabled:
                 logger.warning(
@@ -270,32 +132,33 @@ class RequirementCommand(IndexGroupCommand):
             src_dir=options.src_dir,
             download_dir=download_dir,
             build_isolation=options.build_isolation,
-            req_tracker=req_tracker,
+            check_build_deps=options.check_build_deps,
+            build_tracker=build_tracker,
             session=session,
             progress_bar=options.progress_bar,
             finder=finder,
             require_hashes=options.require_hashes,
             use_user_site=use_user_site,
             lazy_wheel=lazy_wheel,
-            in_tree_build="in-tree-build" in options.features_enabled,
+            verbosity=verbosity,
+            legacy_resolver=legacy_resolver,
         )
 
     @classmethod
     def make_resolver(
         cls,
-        preparer,  # type: RequirementPreparer
-        finder,  # type: PackageFinder
-        options,  # type: Values
-        wheel_cache=None,  # type: Optional[WheelCache]
-        use_user_site=False,  # type: bool
-        ignore_installed=True,  # type: bool
-        ignore_requires_python=False,  # type: bool
-        force_reinstall=False,  # type: bool
-        upgrade_strategy="to-satisfy-only",  # type: str
-        use_pep517=None,  # type: Optional[bool]
-        py_version_info=None,  # type: Optional[Tuple[int, ...]]
-    ):
-        # type: (...) -> BaseResolver
+        preparer: RequirementPreparer,
+        finder: PackageFinder,
+        options: Values,
+        wheel_cache: Optional[WheelCache] = None,
+        use_user_site: bool = False,
+        ignore_installed: bool = True,
+        ignore_requires_python: bool = False,
+        force_reinstall: bool = False,
+        upgrade_strategy: str = "to-satisfy-only",
+        use_pep517: Optional[bool] = None,
+        py_version_info: Optional[Tuple[int, ...]] = None,
+    ) -> BaseResolver:
         """
         Create a Resolver instance for the given parameters.
         """
@@ -308,7 +171,7 @@ class RequirementCommand(IndexGroupCommand):
         # The long import name and duplicated invocation is needed to convince
         # Mypy into correctly typechecking. Otherwise it would complain the
         # "Resolver" class being redefined.
-        if resolver_variant == "2020-resolver":
+        if resolver_variant == "resolvelib":
             import pip._internal.resolution.resolvelib.resolver
 
             return pip._internal.resolution.resolvelib.resolver.Resolver(
@@ -342,16 +205,15 @@ class RequirementCommand(IndexGroupCommand):
 
     def get_requirements(
         self,
-        args,  # type: List[str]
-        options,  # type: Values
-        finder,  # type: PackageFinder
-        session,  # type: PipSession
-    ):
-        # type: (...) -> List[InstallRequirement]
+        args: List[str],
+        options: Values,
+        finder: PackageFinder,
+        session: PipSession,
+    ) -> List[InstallRequirement]:
         """
         Parse command-line arguments into the corresponding requirements.
         """
-        requirements = []  # type: List[InstallRequirement]
+        requirements: List[InstallRequirement] = []
         for filename in options.constraints:
             for parsed_req in parse_requirements(
                 filename,
@@ -370,10 +232,11 @@ class RequirementCommand(IndexGroupCommand):
         for req in args:
             req_to_add = install_req_from_line(
                 req,
-                None,
+                comes_from=None,
                 isolated=options.isolated_mode,
                 use_pep517=options.use_pep517,
                 user_supplied=True,
+                config_settings=getattr(options, "config_settings", None),
             )
             requirements.append(req_to_add)
 
@@ -383,6 +246,7 @@ class RequirementCommand(IndexGroupCommand):
                 user_supplied=True,
                 isolated=options.isolated_mode,
                 use_pep517=options.use_pep517,
+                config_settings=getattr(options, "config_settings", None),
             )
             requirements.append(req_to_add)
 
@@ -396,6 +260,11 @@ class RequirementCommand(IndexGroupCommand):
                     isolated=options.isolated_mode,
                     use_pep517=options.use_pep517,
                     user_supplied=True,
+                    config_settings=(
+                        parsed_req.options.get("config_settings")
+                        if parsed_req.options
+                        else None
+                    ),
                 )
                 requirements.append(req_to_add)
 
@@ -421,8 +290,7 @@ class RequirementCommand(IndexGroupCommand):
         return requirements
 
     @staticmethod
-    def trace_basic_info(finder):
-        # type: (PackageFinder) -> None
+    def trace_basic_info(finder: PackageFinder) -> None:
         """
         Trace basic information about the provided objects.
         """
@@ -434,12 +302,11 @@ class RequirementCommand(IndexGroupCommand):
 
     def _build_package_finder(
         self,
-        options,  # type: Values
-        session,  # type: PipSession
-        target_python=None,  # type: Optional[TargetPython]
-        ignore_requires_python=None,  # type: Optional[bool]
-    ):
-        # type: (...) -> PackageFinder
+        options: Values,
+        session: PipSession,
+        target_python: Optional[TargetPython] = None,
+        ignore_requires_python: Optional[bool] = None,
+    ) -> PackageFinder:
         """
         Create a package finder appropriate to this requirement command.
 
