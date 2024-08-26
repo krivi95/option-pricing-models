@@ -1,4 +1,4 @@
-# Standart python imports
+# Standard python imports
 from enum import Enum
 from datetime import datetime, timedelta
 
@@ -13,9 +13,9 @@ class OPTION_PRICING_MODEL(Enum):
     MONTE_CARLO = 'Monte Carlo Simulation'
     BINOMIAL = 'Binomial Model'
 
-@st.cache
+@st.cache_data
 def get_historical_data(ticker):
-    """Getting historical data for speified ticker and caching it with streamlit app."""
+    """Getting historical data for specified ticker and caching it with streamlit app."""
     return Ticker.get_historical_data(ticker)
 
 # Ignore the Streamlit warning for using st.pyplot()
@@ -41,24 +41,27 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     if st.button(f'Calculate option price for {ticker}'):
         # Getting data for selected ticker
         data = get_historical_data(ticker)
-        st.write(data.tail())
-        Ticker.plot_data(data, ticker, 'Adj Close')
-        st.pyplot()
+        if data is not None:
+            st.write(data.tail())
+            Ticker.plot_data(data, ticker, 'Adj Close')
+            st.pyplot()
 
-        # Formating selected model parameters
-        spot_price = Ticker.get_last_price(data, 'Adj Close') 
-        risk_free_rate = risk_free_rate / 100
-        sigma = sigma / 100
-        days_to_maturity = (exercise_date - datetime.now().date()).days
+            # Formatting selected model parameters
+            spot_price = Ticker.get_last_price(data, 'Adj Close') 
+            risk_free_rate = risk_free_rate / 100
+            sigma = sigma / 100
+            days_to_maturity = (exercise_date - datetime.now().date()).days
 
-        # Calculating option price
-        BSM = BlackScholesModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma)
-        call_option_price = BSM.calculate_option_price('Call Option')
-        put_option_price = BSM.calculate_option_price('Put Option')
+            # Calculating option price
+            BSM = BlackScholesModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma)
+            call_option_price = BSM.calculate_option_price('Call Option')
+            put_option_price = BSM.calculate_option_price('Put Option')
 
-        # Displaying call/put option price
-        st.subheader(f'Call option price: {call_option_price}')
-        st.subheader(f'Put option price: {put_option_price}')
+            # Displaying call/put option price
+            st.subheader(f'Call option price: {call_option_price}')
+            st.subheader(f'Put option price: {put_option_price}')
+        else:
+            st.error(f"Unable to fetch data for ticker {ticker}. Please check the ticker symbol and try again.")
 
 elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
     # Parameters for Monte Carlo simulation
@@ -73,31 +76,34 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
     if st.button(f'Calculate option price for {ticker}'):
         # Getting data for selected ticker
         data = get_historical_data(ticker)
-        st.write(data.tail())
-        Ticker.plot_data(data, ticker, 'Adj Close')
-        st.pyplot()
+        if data is not None:
+            st.write(data.tail())
+            Ticker.plot_data(data, ticker, 'Adj Close')
+            st.pyplot()
 
-        # Formating simulation parameters
-        spot_price = Ticker.get_last_price(data, 'Adj Close') 
-        risk_free_rate = risk_free_rate / 100
-        sigma = sigma / 100
-        days_to_maturity = (exercise_date - datetime.now().date()).days
+            # Formatting simulation parameters
+            spot_price = Ticker.get_last_price(data, 'Adj Close') 
+            risk_free_rate = risk_free_rate / 100
+            sigma = sigma / 100
+            days_to_maturity = (exercise_date - datetime.now().date()).days
 
-        # ESimulating stock movements
-        MC = MonteCarloPricing(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma, number_of_simulations)
-        MC.simulate_prices()
+            # Simulating stock movements
+            MC = MonteCarloPricing(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma, number_of_simulations)
+            MC.simulate_prices()
 
-        # Visualizing Monte Carlo Simulation
-        MC.plot_simulation_results(num_of_movements)
-        st.pyplot()
+            # Visualizing Monte Carlo Simulation
+            MC.plot_simulation_results(num_of_movements)
+            st.pyplot()
 
-        # Calculating call/put option price
-        call_option_price = MC.calculate_option_price('Call Option')
-        put_option_price = MC.calculate_option_price('Put Option')
+            # Calculating call/put option price
+            call_option_price = MC.calculate_option_price('Call Option')
+            put_option_price = MC.calculate_option_price('Put Option')
 
-        # Displaying call/put option price
-        st.subheader(f'Call option price: {call_option_price}')
-        st.subheader(f'Put option price: {put_option_price}')
+            # Displaying call/put option price
+            st.subheader(f'Call option price: {call_option_price}')
+            st.subheader(f'Put option price: {put_option_price}')
+        else:
+            st.error(f"Unable to fetch data for ticker {ticker}. Please check the ticker symbol and try again.")
 
 elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
     # Parameters for Binomial-Tree model
@@ -109,23 +115,26 @@ elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
     number_of_time_steps = st.slider('Number of time steps', 5000, 100000, 15000)
 
     if st.button(f'Calculate option price for {ticker}'):
-         # Getting data for selected ticker
+        # Getting data for selected ticker
         data = get_historical_data(ticker)
-        st.write(data.tail())
-        Ticker.plot_data(data, ticker, 'Adj Close')
-        st.pyplot()
+        if data is not None:
+            st.write(data.tail())
+            Ticker.plot_data(data, ticker, 'Adj Close')
+            st.pyplot()
 
-        # Formating simulation parameters
-        spot_price = Ticker.get_last_price(data, 'Adj Close') 
-        risk_free_rate = risk_free_rate / 100
-        sigma = sigma / 100
-        days_to_maturity = (exercise_date - datetime.now().date()).days
+            # Formatting simulation parameters
+            spot_price = Ticker.get_last_price(data, 'Adj Close') 
+            risk_free_rate = risk_free_rate / 100
+            sigma = sigma / 100
+            days_to_maturity = (exercise_date - datetime.now().date()).days
 
-        # Calculating option price
-        BOPM = BinomialTreeModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma, number_of_time_steps)
-        call_option_price = BOPM.calculate_option_price('Call Option')
-        put_option_price = BOPM.calculate_option_price('Put Option')
+            # Calculating option price
+            BOPM = BinomialTreeModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma, number_of_time_steps)
+            call_option_price = BOPM.calculate_option_price('Call Option')
+            put_option_price = BOPM.calculate_option_price('Put Option')
 
-        # Displaying call/put option price
-        st.subheader(f'Call option price: {call_option_price}')
-        st.subheader(f'Put option price: {put_option_price}')
+            # Displaying call/put option price
+            st.subheader(f'Call option price: {call_option_price}')
+            st.subheader(f'Put option price: {put_option_price}')
+        else:
+            st.error(f"Unable to fetch data for ticker {ticker}. Please check the ticker symbol and try again.")
