@@ -3,6 +3,7 @@ from enum import Enum
 from datetime import datetime, timedelta
 import yfinance as yf
 from option_pricing import BlackScholesModel, MonteCarloPricing, BinomialTreeModel, Ticker
+import json
 
 class OPTION_PRICING_MODEL(Enum):
     BLACK_SCHOLES = 'Black Scholes Model'
@@ -38,6 +39,15 @@ pricing_method = st.sidebar.radio('Please select option pricing method', options
 
 # Displaying specified model
 st.subheader(f'Pricing method: {pricing_method}')
+
+def format_calculation_steps(steps):
+    formatted_steps = ""
+    for step, details in steps.items():
+        formatted_steps += f"**{step}:**\n"
+        for key, value in details.items():
+            formatted_steps += f"- {key}: {value}\n"
+        formatted_steps += "\n"
+    return formatted_steps
 
 if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     # Parameters for Black-Scholes model
@@ -102,6 +112,12 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
 
                 st.subheader(f'Call option price: {call_option_price:.2f}')
                 st.subheader(f'Put option price: {put_option_price:.2f}')
+
+                show_calculations = st.toggle("Show Calculations")
+                if show_calculations:
+                    calculation_steps = BSM.get_calculation_steps()
+                    st.markdown("## Calculation Steps")
+                    st.markdown(format_calculation_steps(calculation_steps))
             else:
                 error_message = "Unable to proceed with calculations due to data fetching error."
         except Exception as e:
@@ -205,6 +221,12 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
 
                 st.subheader(f'Call option price: {call_option_price:.2f}')
                 st.subheader(f'Put option price: {put_option_price:.2f}')
+
+                show_calculations = st.toggle("Show Calculations")
+                if show_calculations:
+                    calculation_steps = MC.get_calculation_steps()
+                    st.markdown("## Calculation Steps")
+                    st.markdown(format_calculation_steps(calculation_steps))
             else:
                 error_message = "Unable to proceed with calculations due to data fetching error."
         except Exception as e:
@@ -305,6 +327,12 @@ elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
 
                 st.subheader(f'Call option price: {call_option_price:.2f}')
                 st.subheader(f'Put option price: {put_option_price:.2f}')
+
+                show_calculations = st.toggle("Show Calculations")
+                if show_calculations:
+                    calculation_steps = BOPM.get_calculation_steps()
+                    st.markdown("## Calculation Steps")
+                    st.markdown(format_calculation_steps(calculation_steps))
             else:
                 error_message = "Unable to proceed with calculations due to data fetching error."
         except Exception as e:
