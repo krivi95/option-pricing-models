@@ -18,6 +18,15 @@ def get_historical_data(ticker):
         st.error(f"Error fetching data for {ticker}: {str(e)}")
         return None
 
+@st.cache_data
+def get_current_price(ticker):
+    try:
+        data = yf.Ticker(ticker).history(period="1d")
+        return data['Close'].iloc[-1]
+    except Exception as e:
+        st.error(f"Error fetching current price for {ticker}: {str(e)}")
+        return None
+
 # Ignore the Streamlit warning for using st.pyplot()
 st.set_option('deprecation.showPyplotGlobalUse', False)
 
@@ -33,10 +42,37 @@ st.subheader(f'Pricing method: {pricing_method}')
 if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     # Parameters for Black-Scholes model
     ticker = st.text_input('Ticker symbol', 'AAPL')
-    strike_price = st.number_input('Strike price', 300)
+    st.caption("Enter the stock symbol (e.g., AAPL for Apple Inc.)")
+
+    # Fetch current price
+    current_price = get_current_price(ticker)
+    
+    if current_price is not None:
+        st.write(f"Current price of {ticker}: ${current_price:.2f}")
+        
+        # Set default and min/max values based on current price
+        default_strike = round(current_price, 2)
+        min_strike = max(0.1, round(current_price * 0.5, 2))
+        max_strike = round(current_price * 2, 2)
+        
+        strike_price = st.number_input('Strike price', 
+                                       min_value=min_strike, 
+                                       max_value=max_strike, 
+                                       value=default_strike, 
+                                       step=0.01)
+        st.caption(f"The price at which the option can be exercised. Range: ${min_strike:.2f} to ${max_strike:.2f}")
+    else:
+        strike_price = st.number_input('Strike price', min_value=0.01, value=100.0, step=0.01)
+        st.caption("The price at which the option can be exercised. Enter a valid ticker to see a suggested range.")
+
     risk_free_rate = st.slider('Risk-free rate (%)', 0, 100, 10)
-    sigma = st.slider('Sigma (%)', 0, 100, 20)
+    st.caption("The theoretical rate of return of an investment with zero risk. Usually based on government bonds. 0% means no risk-free return, 100% means doubling your money risk-free (unrealistic).")
+
+    sigma = st.slider('Sigma (Volatility) (%)', 0, 100, 20)
+    st.caption("A measure of the stock's price variability. Higher values indicate more volatile stocks. 0% means no volatility (unrealistic), 100% means extremely volatile.")
+
     exercise_date = st.date_input('Exercise date', min_value=datetime.today() + timedelta(days=1), value=datetime.today() + timedelta(days=365))
+    st.caption("The date when the option can be exercised")
     
     # Initialize data as None
     data = None
@@ -98,12 +134,43 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
 elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
     # Parameters for Monte Carlo simulation
     ticker = st.text_input('Ticker symbol', 'AAPL')
-    strike_price = st.number_input('Strike price', 300)
+    st.caption("Enter the stock symbol (e.g., AAPL for Apple Inc.)")
+
+    # Fetch current price
+    current_price = get_current_price(ticker)
+    
+    if current_price is not None:
+        st.write(f"Current price of {ticker}: ${current_price:.2f}")
+        
+        # Set default and min/max values based on current price
+        default_strike = round(current_price, 2)
+        min_strike = max(0.1, round(current_price * 0.5, 2))
+        max_strike = round(current_price * 2, 2)
+        
+        strike_price = st.number_input('Strike price', 
+                                       min_value=min_strike, 
+                                       max_value=max_strike, 
+                                       value=default_strike, 
+                                       step=0.01)
+        st.caption(f"The price at which the option can be exercised. Range: ${min_strike:.2f} to ${max_strike:.2f}")
+    else:
+        strike_price = st.number_input('Strike price', min_value=0.01, value=100.0, step=0.01)
+        st.caption("The price at which the option can be exercised. Enter a valid ticker to see a suggested range.")
+
     risk_free_rate = st.slider('Risk-free rate (%)', 0, 100, 10)
-    sigma = st.slider('Sigma (%)', 0, 100, 20)
+    st.caption("The theoretical rate of return of an investment with zero risk. Usually based on government bonds. 0% means no risk-free return, 100% means doubling your money risk-free (unrealistic).")
+
+    sigma = st.slider('Sigma (Volatility) (%)', 0, 100, 20)
+    st.caption("A measure of the stock's price variability. Higher values indicate more volatile stocks. 0% means no volatility (unrealistic), 100% means extremely volatile.")
+
     exercise_date = st.date_input('Exercise date', min_value=datetime.today() + timedelta(days=1), value=datetime.today() + timedelta(days=365))
+    st.caption("The date when the option can be exercised")
+
     number_of_simulations = st.slider('Number of simulations', 100, 100000, 10000)
+    st.caption("The number of price paths to simulate. More simulations increase accuracy but take longer to compute.")
+
     num_of_movements = st.slider('Number of price movement simulations to be visualized ', 0, int(number_of_simulations/10), 100)
+    st.caption("The number of simulated price paths to display on the graph")
 
     # Initialize data as None
     data = None
@@ -175,11 +242,40 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
 elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
     # Parameters for Binomial-Tree model
     ticker = st.text_input('Ticker symbol', 'AAPL')
-    strike_price = st.number_input('Strike price', 300)
+    st.caption("Enter the stock symbol (e.g., AAPL for Apple Inc.)")
+
+    # Fetch current price
+    current_price = get_current_price(ticker)
+    
+    if current_price is not None:
+        st.write(f"Current price of {ticker}: ${current_price:.2f}")
+        
+        # Set default and min/max values based on current price
+        default_strike = round(current_price, 2)
+        min_strike = max(0.1, round(current_price * 0.5, 2))
+        max_strike = round(current_price * 2, 2)
+        
+        strike_price = st.number_input('Strike price', 
+                                       min_value=min_strike, 
+                                       max_value=max_strike, 
+                                       value=default_strike, 
+                                       step=0.01)
+        st.caption(f"The price at which the option can be exercised. Range: ${min_strike:.2f} to ${max_strike:.2f}")
+    else:
+        strike_price = st.number_input('Strike price', min_value=0.01, value=100.0, step=0.01)
+        st.caption("The price at which the option can be exercised. Enter a valid ticker to see a suggested range.")
+
     risk_free_rate = st.slider('Risk-free rate (%)', 0, 100, 10)
-    sigma = st.slider('Sigma (%)', 0, 100, 20)
+    st.caption("The theoretical rate of return of an investment with zero risk. Usually based on government bonds. 0% means no risk-free return, 100% means doubling your money risk-free (unrealistic).")
+
+    sigma = st.slider('Sigma (Volatility) (%)', 0, 100, 20)
+    st.caption("A measure of the stock's price variability. Higher values indicate more volatile stocks. 0% means no volatility (unrealistic), 100% means extremely volatile.")
+
     exercise_date = st.date_input('Exercise date', min_value=datetime.today() + timedelta(days=1), value=datetime.today() + timedelta(days=365))
+    st.caption("The date when the option can be exercised")
+
     number_of_time_steps = st.slider('Number of time steps', 5000, 100000, 15000)
+    st.caption("The number of periods in the binomial tree. More steps increase accuracy but take longer to compute.")
 
     # Initialize data as None
     data = None
