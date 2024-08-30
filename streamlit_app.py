@@ -40,15 +40,6 @@ pricing_method = st.sidebar.radio('Please select option pricing method', options
 # Displaying specified model
 st.subheader(f'Pricing method: {pricing_method}')
 
-def format_calculation_steps(steps):
-    formatted_steps = ""
-    for step, details in steps.items():
-        formatted_steps += f"**{step}:**\n"
-        for key, value in details.items():
-            formatted_steps += f"- {key}: {value}\n"
-        formatted_steps += "\n"
-    return formatted_steps
-
 if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     # Parameters for Black-Scholes model
     ticker = st.text_input('Ticker symbol', 'AAPL')
@@ -84,16 +75,11 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
     exercise_date = st.date_input('Exercise date', min_value=datetime.today() + timedelta(days=1), value=datetime.today() + timedelta(days=365))
     st.caption("The date when the option can be exercised")
     
-    # Initialize data as None
-    data = None
-    error_message = None
-
     if st.button(f'Calculate option price for {ticker}'):
         try:
             with st.spinner('Fetching data...'):
                 data = get_historical_data(ticker)
 
-            # Move this check after the button
             if data is not None and not data.empty:
                 st.write("Data fetched successfully:")
                 st.write(data.tail())
@@ -112,38 +98,10 @@ if pricing_method == OPTION_PRICING_MODEL.BLACK_SCHOLES.value:
 
                 st.subheader(f'Call option price: {call_option_price:.2f}')
                 st.subheader(f'Put option price: {put_option_price:.2f}')
-
-                show_calculations = st.toggle("Show Calculations")
-                if show_calculations:
-                    calculation_steps = BSM.get_calculation_steps()
-                    st.markdown("## Calculation Steps")
-                    st.markdown(format_calculation_steps(calculation_steps))
             else:
-                error_message = "Unable to proceed with calculations due to data fetching error."
+                st.error("Unable to proceed with calculations due to data fetching error.")
         except Exception as e:
-            error_message = f"Error during calculation: {str(e)}"
-
-    # Display error message if there's an error
-    if error_message:
-        st.error(error_message)
-    elif data is not None and not data.empty:
-        st.write("Data fetched successfully:")
-        st.write(data.tail())
-        
-        fig = Ticker.plot_data(data, ticker, 'Close')
-        st.pyplot(fig)
-
-        spot_price = Ticker.get_last_price(data, 'Close')
-        risk_free_rate = risk_free_rate / 100
-        sigma = sigma / 100
-        days_to_maturity = (exercise_date - datetime.now().date()).days
-
-        BSM = BlackScholesModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma)
-        call_option_price = BSM.calculate_option_price('Call Option')
-        put_option_price = BSM.calculate_option_price('Put Option')
-
-        st.subheader(f'Call option price: {call_option_price:.2f}')
-        st.subheader(f'Put option price: {put_option_price:.2f}')
+            st.error(f"Error during calculation: {str(e)}")
     else:
         st.info("Click 'Calculate option price' to see results.")
 
@@ -188,16 +146,11 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
     num_of_movements = st.slider('Number of price movement simulations to be visualized ', 0, int(number_of_simulations/10), 100)
     st.caption("The number of simulated price paths to display on the graph")
 
-    # Initialize data as None
-    data = None
-    error_message = None
-
     if st.button(f'Calculate option price for {ticker}'):
         try:
             with st.spinner('Fetching data...'):
                 data = get_historical_data(ticker)
             
-            # Move this check after the button
             if data is not None and not data.empty:
                 st.write("Data fetched successfully:")
                 st.write(data.tail())
@@ -221,43 +174,10 @@ elif pricing_method == OPTION_PRICING_MODEL.MONTE_CARLO.value:
 
                 st.subheader(f'Call option price: {call_option_price:.2f}')
                 st.subheader(f'Put option price: {put_option_price:.2f}')
-
-                show_calculations = st.toggle("Show Calculations")
-                if show_calculations:
-                    calculation_steps = MC.get_calculation_steps()
-                    st.markdown("## Calculation Steps")
-                    st.markdown(format_calculation_steps(calculation_steps))
             else:
-                error_message = "Unable to proceed with calculations due to data fetching error."
+                st.error("Unable to proceed with calculations due to data fetching error.")
         except Exception as e:
-            error_message = f"Error during calculation: {str(e)}"
-
-    # Display error message if there's an error
-    if error_message:
-        st.error(error_message)
-    elif data is not None and not data.empty:
-        st.write("Data fetched successfully:")
-        st.write(data.tail())
-        
-        fig = Ticker.plot_data(data, ticker, 'Close')
-        st.pyplot(fig)
-
-        spot_price = Ticker.get_last_price(data, 'Close')
-        risk_free_rate = risk_free_rate / 100
-        sigma = sigma / 100
-        days_to_maturity = (exercise_date - datetime.now().date()).days
-
-        MC = MonteCarloPricing(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma, number_of_simulations)
-        MC.simulate_prices()
-
-        MC.plot_simulation_results(num_of_movements)
-        st.pyplot()
-
-        call_option_price = MC.calculate_option_price('Call Option')
-        put_option_price = MC.calculate_option_price('Put Option')
-
-        st.subheader(f'Call option price: {call_option_price:.2f}')
-        st.subheader(f'Put option price: {put_option_price:.2f}')
+            st.error(f"Error during calculation: {str(e)}")
     else:
         st.info("Click 'Calculate option price' to see results.")
 
@@ -299,16 +219,11 @@ elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
     number_of_time_steps = st.slider('Number of time steps', 5000, 100000, 15000)
     st.caption("The number of periods in the binomial tree. More steps increase accuracy but take longer to compute.")
 
-    # Initialize data as None
-    data = None
-    error_message = None
-
     if st.button(f'Calculate option price for {ticker}'):
         try:
             with st.spinner('Fetching data...'):
                 data = get_historical_data(ticker)
             
-            # Move this check after the button
             if data is not None and not data.empty:
                 st.write("Data fetched successfully:")
                 st.write(data.tail())
@@ -327,37 +242,9 @@ elif pricing_method == OPTION_PRICING_MODEL.BINOMIAL.value:
 
                 st.subheader(f'Call option price: {call_option_price:.2f}')
                 st.subheader(f'Put option price: {put_option_price:.2f}')
-
-                show_calculations = st.toggle("Show Calculations")
-                if show_calculations:
-                    calculation_steps = BOPM.get_calculation_steps()
-                    st.markdown("## Calculation Steps")
-                    st.markdown(format_calculation_steps(calculation_steps))
             else:
-                error_message = "Unable to proceed with calculations due to data fetching error."
+                st.error("Unable to proceed with calculations due to data fetching error.")
         except Exception as e:
-            error_message = f"Error during calculation: {str(e)}"
-
-    # Display error message if there's an error
-    if error_message:
-        st.error(error_message)
-    elif data is not None and not data.empty:
-        st.write("Data fetched successfully:")
-        st.write(data.tail())
-        
-        fig = Ticker.plot_data(data, ticker, 'Close')
-        st.pyplot(fig)
-
-        spot_price = Ticker.get_last_price(data, 'Close')
-        risk_free_rate = risk_free_rate / 100
-        sigma = sigma / 100
-        days_to_maturity = (exercise_date - datetime.now().date()).days
-
-        BOPM = BinomialTreeModel(spot_price, strike_price, days_to_maturity, risk_free_rate, sigma, number_of_time_steps)
-        call_option_price = BOPM.calculate_option_price('Call Option')
-        put_option_price = BOPM.calculate_option_price('Put Option')
-
-        st.subheader(f'Call option price: {call_option_price:.2f}')
-        st.subheader(f'Put option price: {put_option_price:.2f}')
+            st.error(f"Error during calculation: {str(e)}")
     else:
         st.info("Click 'Calculate option price' to see results.")
