@@ -69,12 +69,12 @@ The easiest way to run the app is using Docker. Make sure you have Docker instal
 ## Streamlit Web App Demonstrations
 
 ### Black-Scholes Model
-![black-scholes-demo](./demo/streamlit-webapp-BS.gif)
+![black-scholes-demo](media/Black_Scholes_Model.gif)
 
 ### Monte Carlo Option Pricing
-![monte-carlo-demo](./demo/streamlit-webapp-MC.gif)
+![monte-carlo-demo](media/Monte_Carlo_Option_Pricing.gif)
 
 ### Binomial Model
-![binomial-tree-demo](./demo/streamlit-webapp-BC.gif)
+![binomial-tree-demo](media/Binomial_Model.gif)
 
 By following these instructions, you can easily set up and explore the option pricing models using the Streamlit web app. Feel free to experiment with different parameters and see how they affect the calculated option prices.
