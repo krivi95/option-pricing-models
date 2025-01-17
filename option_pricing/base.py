@@ -1,5 +1,5 @@
 from enum import Enum
-from abc import ABC, abstractclassmethod
+from abc import ABC, abstractmethod
 
 class OPTION_TYPE(Enum):
     CALL_OPTION = 'Call Option'
@@ -17,12 +17,14 @@ class OptionPricingModel(ABC):
         else:
             return -1
 
-    @abstractclassmethod
-    def _calculate_call_option_price(self):
+    @classmethod
+    @abstractmethod
+    def _calculate_call_option_price(cls):
         """Calculates option price for call option."""
         pass
 
-    @abstractclassmethod
-    def _calculate_put_option_price(self):
+    @classmethod
+    @abstractmethod
+    def _calculate_put_option_price(cls):
         """Calculates option price for put option."""
         pass
